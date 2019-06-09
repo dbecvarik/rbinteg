@@ -7,7 +7,7 @@
             <xmljson id="xmljson"/>
         </dataFormats>
         <restConfiguration bindingMode="json" component="jetty"
-            host="localhost" port="8082"/>
+            host="0.0.0.0" port="8082"/>
         <rest id="id-124ac690-4d0f-4266-bc55-4cda323308dc" path="/books">
             <get id="id-ae5636b5-187b-4111-8da7-00c9f6f45b98"
                 outType="tns.BookInfoResponse" type="java.lang.String" uri="/bookinfo/{arg0}">
