@@ -64,10 +64,10 @@ def list_books():
 def cfg():
     if os.environ.get('CFG'):
         return "Cfg: " + os.environ.get('CFG')
-    if not os.path.exists('/tmp/cfg'):
+    if not os.path.exists('/tmp/cfg/cfg'):
         return "No cfg found"
 
-    with open('/tmp/cfg', 'r') as f:
+    with open('/tmp/cfg/cfg', 'r') as f:
         lines = f.readlines()
         return "Cfg: " + '<br>'.join(lines)
 
