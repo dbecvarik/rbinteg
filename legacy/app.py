@@ -1,3 +1,6 @@
+import signal
+import os
+
 from flask import Flask
 from flask_spyne import Spyne
 from spyne.protocol.soap import Soap11
@@ -5,7 +8,6 @@ from spyne.model.primitive import Unicode, Integer
 from spyne.model.complex import Iterable, ComplexModel
 
 import time
-#test
 
 BOOKS = [{'name': "1984",
           'stock': 11,
@@ -57,5 +59,27 @@ def list_books():
             str(book['stock']) + "<br>"
     return resp
 
+
+@app.route('/cfg')
+def cfg():
+    if os.environ.get('CFG'):
+        return "Cfg: " + os.environ.get('CFG')
+    if not os.path.exists('/tmp/cfg'):
+        return "No cfg found"
+
+    with open('/tmp/cfg', 'r') as f:
+        lines = f.readlines()
+        return "Cfg: " + '<br>'.join(lines)
+
+
+def handler(signum, frame):
+    print('Signal handler called with signal', signum)
+    app.shutdown()
+
+signal.signal(signal.SIGTERM, handler)
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
+
+
+
