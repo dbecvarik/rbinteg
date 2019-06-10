@@ -1,0 +1,229 @@
+* Prepraring your environment
+First fork and clone this repositroy, then login to shared OpenShift instance and create project
+#+BEGIN_SRC shell
+oc login ...
+oc new-project $project
+#+END_SRC
+
+* Containerizing application
+Containerizing an app is easy, you write dockerfile and build it, right? 
+unfortunatelly not. To create a good maintainable container you need to:
+- Have a good base image
+  - doesn't leak any security information in layers
+  - doesn't contain any CVE
+- Write good Dockerfile
+  - labels
+  - Chain instruction in a proper way for better diffs
+- Adapt your application for contianer runtime
+  - Configuration
+  - Logging
+  - Signals
+  - Tuned application
+ 
+* Bookshop application
+
+In this workshop we will go through a our custom bookshop application. Its and old legacy application which has
+very slow SOAP interface and it serving its purposes for a long time. It caries a big technical dept and time
+to market of any new feature is huge.
+
+As part of our containerization adoption we decide to replatform this application to containers so we can run it
+on modern and more powerfull infrastracture and slowly modernize it. Druing the containerization we will aproach 
+multiple issues and we will solve them.
+
+We don't want to write or maintain any Dockerfile as it is unneeded burden so we will use S2I to produce our images.
+
+#+BEGIN_SRC 
+oc new-app --image-stream=openshift/python:2.7 https://github.com/dbecvarik/workshop-OCP-workload --name legacyapp
+oc expose svc/legacyapp
+#+END_SRC
+
+Tasks:
+- Access the legacyapp via openshift route
+- update url in legacy/resp.py and prove that bookshop application is working properly
+
+** Signal
+On unix we ussually use signals to stop the applications. On OpenShift if you are terminating pods you send SIGTERM
+signal to an application running inside it and it waits for it until it quits.
+
+We will terminate our app via following commnad by scaling it to zero replicas.
+#+BEGIN_SRC 
+oc scale dc/legacyapp --replicas 0
+#+END_SRC
+
+You should see your pods in Terminating state when you list them via:
+#+BEGIN_SRC 
+oc get pods
+#+END_SRC
+
+Wait until your application is correctly terminated. It took a lot of time, maybe there is an issue in it.
+
+we can deploy patched version of our application
+#+BEGIN_SRC 
+oc new-app --image-stream=openshift/python:2.7 https://github.com/dbecvarik/workshop-OCP-workload --name legacyappsig
+oc expose svc/legacyappsig
+#+END_SRC
+
+when it's successfully deployed try to scale it down to zer replicas
+#+BEGIN_SRC 
+oc scale dc/legacyapp --replicas 0
+#+END_SRC
+
+this time it should end immediately. The differenece is in signal handling. Letss see diff between theese two apps:
+#+BEGIN_SRC shell
+diff legacy/app.py legacysig/app.py
+#+END_SRC
+
+As you can se the difference is only in signal handling as we spoke during our presentation. Signals in Linux are not
+delivered to pid 1 until it has explicit handler.
+
+Tasks:
+- Run app with different pid and show it reacts to signal properly
+
+** Application configuratoin
+Almost every application needs a caonfiguration. With containers in OpenShift we can typically use multiple ways 
+to configure applications.
+
+- hardcoded in container
+- ConfigMaps
+- Environment Variable
+
+We will talk about it all the approaches above in little more detail and will try them all and we will explain 
+issues everyone of them solves and brings.
+
+
+*** Hardcoded Configuration
+This way of configuring application is very easy and probably is the very first aproach people tries. 
+Its very simple to implement and can be used as a quick PoC if application can be containerized.
+
+We accomplish this by adding custom configuration to a container. The biggest drawback is that we need
+to rebuild contianer for every configuration change which can be time consuming. Interesting benefit
+is that with a proper versioning scheme you can easily restore previous state of your application.
+
+We can aproach the need of container recreation by using s2i. We will learn how to do it in following 
+excersise.
+
+
+*** Config maps
+Config maps can be used a way how to store your application configuration as a part of application configuration.
+They're stored in etcd and are accessible typically as a file in a pod. It's a neat way to reconfigure.
+
+We will use OpenShift Console to do this. Please login to openshift via web browser and click on "Resources
+-> Config Maps"
+[[img/config_map_menu.png ]]
+
+Then click on Create Config Map button.
+
+[[img/config_map_create.png ]]
+
+Then fill in the content in a following way:
+
+[[img/config_map_content.png ]]
+
+And select the config map and mount it to your application
+
+[[img/config_map_mount.png ]]
+
+After this you should visit your app via route and hit "/cfg" endpoint, it should content of the config map.
+
+Tasks:
+- use oc rsh or openshift console to acces terminal of legacy app container and show the content of the config map
+- change content of the config map and hit the /cfg endpoint again, explain what happened
+- use oc command to show how config map is added to legacyapp deployment
+
+*** Environment variables
+This is the common way how to configure Red Hat MW containers. It works well with templating deployments yamls.
+In this approach container during it startups parses predefined sets of environment variables and prepares
+configuration for the application running inside the container. To create this kind of configuration we need 
+to run some code before our application is started, typically we can use on of the following aproaches.
+
+**** Init scripts
+in this aproach we will add an init script into our application which will consume env variable and create 
+a config file from it, then it will launch our application. To do this, we will deploy speciall version of
+our legacy app adjusted with a few lines of python which reads the CFG_INIT variable and write it content 
+into /tmp/cfg/cfg file.
+
+#+BEGIN_SRC 
+
+#+END_SRC
+
+**** Init container
+This aproach is similar to previous one, the difference is that instead of running script inside the application
+container itself its run as an init container before the applicaiton starts. This aproach is more friendly
+to templating and its easier to version.
+
+I'll let this for you as the development task, steps you need to do:
+
+- build image in an openshift with a custom script that reads the env and creates /tmp/cfg/cfg file
+- add this image to your application as an init container
+- define this env for your application deployment
+
+
+** Logging
+In OpenShift cluster we are using EFK stack to collect logs. By default all stdout from any pod is scraped and
+collected.
+
+
+
+* Glueing it together
+As you can see we've modified our application and even found a nice way how to configure it. We've run some 
+OpenShift command which deployed applications for us. We now need to look at it in a better way.
+To achive this we will us Ansible to deploy our application and parametrize its configuration.
+Ansible comes with a pretty good Kubernetes module and Jinja templating we can use to have reasonably automated
+and confiugrable deployment.
+
+
+
+* Aplication modernization
+** replatform
+We can try to make application more performant to buy us a time by moving it to better HW. I've did it by deploying the 
+app nd now its 50% faster and we can try to enhance its architecture and slowly in next steps.
+
+
+** refacor
+Refactoring application is often only option to make it modern. It can be rewrite from scracht, it can be refactoring to 
+microservices, but ussually its expensinve and time consuming process and require a lot of commitment. We will try
+to find a way which is more suitable in a daily life and will help you modernize your application in an easier
+way which will let you operate your existing app and migrate to modern one without dany downtime or astronomic costs
+
+
+*** continuosly modernize
+Our aproach is based on developing microservices shell to your exsiting legacy application first. This aproach will
+enable us to model and try new microservices architecture and we can quickly decide if we need to tweak it a little
+or completely change. With this experence we will be able to add new features via new microservices and modernize
+our legacy backend application by removing part of its features from it and replacing services shells with proper
+microservices implementation. We will achieve this by using Red Hat Fuse, our agile ESB solution for next decade.
+
+*** ESB
+To build a microservice crust to our legacy application we will deploy Red Hat Fuse. Side of of this crust is
+also that we were able to easily convert "big bloated" web service to a RESTfull microservices, that we can 
+scale and manage much easily in future.
+
+#+BEGIN_SRC shell
+oc apply -f ansible/crust/templates/bc.yaml
+oc apply -f ansible/crust/templates/dc.yaml
+#+END_SRC
+
+Tasks:
+- convert this deployments to ansible module
+
+Access this app via its route and hit "/books/list" and "/books/info/1984" endpoints. You should get same
+resposnes as you get with resp.py program from soap interface.
+
+*** caches
+As you see we were able to convert are slow SOAP service to rest ones via Red Hat Fuse. We can make them more 
+performant by using caches inside Red Hat Fuse. We will not go through this as this is not primary focus
+of this workshop.
+
+
+*** New features
+We wanted to extend our application by a review service, we will do it by deploying a new review service and
+a new web application. (Hint: Its python app)
+
+Our review service is located in the review directry, use oc new-app to deploy it. 
+
+After that pleas deploy new page, you need to set following env variables, so it can find all services:
+- REVIEW - address of a new review service
+- CRUST - address of a crust integration
+
+
+
