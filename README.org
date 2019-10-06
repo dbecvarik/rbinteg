@@ -143,8 +143,12 @@ our legacy app adjusted with a few lines of python which reads the CFG_INIT vari
 into /tmp/cfg/cfg file.
 
 #+BEGIN_SRC 
-
+oc new-app --image-stream=openshift/python:2.7 https://github.com/dbecvarik/workshop-OCP-workload --name legacyapcfg --context-dir=legacy-env -eCFG_INIT=aaa_Bbb
+oc expose svc/legacyapcfg
 #+END_SRC
+
+Tasks
+- examine source code of the legacyapp-cfg to see how this pattern is done
 
 **** Init container
 This aproach is similar to previous one, the difference is that instead of running script inside the application
@@ -216,14 +220,8 @@ of this workshop.
 
 
 *** New features
-We wanted to extend our application by a review service, we will do it by deploying a new review service and
-a new web application. (Hint: Its python app)
-
-Our review service is located in the review directry, use oc new-app to deploy it. 
-
-After that pleas deploy new page, you need to set following env variables, so it can find all services:
-- REVIEW - address of a new review service
-- CRUST - address of a crust integration
-
+Now if we want to extend our application funcionality we can just add new microservices to our service
+mesh. WE can now expand our infrastructure possibilites with Istio, 3scale and other awesome products
+and really enjoy agile culture.
 
 
